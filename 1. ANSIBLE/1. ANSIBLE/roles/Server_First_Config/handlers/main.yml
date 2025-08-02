@@ -1,0 +1,15 @@
+---
+# Handler to enable and start SSH service
+- name: enable ssh
+  service:
+    name: ssh
+    state: started
+    enabled: true
+    immediate: true
+
+# Handler to restart SSH service
+- name: restart ssh
+  service:
+    name: ssh
+    state: restarted
+    

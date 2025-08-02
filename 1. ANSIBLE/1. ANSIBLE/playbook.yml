@@ -1,0 +1,8 @@
+---
+- hosts: prometheus
+  become: true
+  gather_facts: false
+  vars:
+    created_username: form
+  roles:
+    - Server_First_Config
