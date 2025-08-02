@@ -1,0 +1,13 @@
+---
+- name: enable ssh
+  service:
+    name: ssh
+    state: enabled
+    enabled: true
+    immediate: true
+
+- name: restart ssh
+  service:
+    name: ssh
+    state: restarted
+    
