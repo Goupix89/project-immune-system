@@ -1,0 +1,111 @@
+#- name: Create Prometheus user and group
+ # ansible.builtin.user: 
+  #  name: prometheus
+   # system: true
+    #shell: /bin/false
+    # Prometheus runs as a service and does not require a home directory.
+    #create_home: false
+
+- name: Définir le chemin de téléchargement
+  set_fact:
+    node_exporter_download_path: "/tmp/node_exporter-latest.tar.gz"
+
+- name: Récupérer l'URL de la dernière release node_exporter
+  shell: |
+    curl -s https://api.github.com/repos/prometheus/node_exporter/releases/latest \
+      | grep 'browser_download_url.*linux-amd64.tar.gz' \
+      | head -n 1 \
+      | cut -d '"' -f 4
+  register: node_exporter_latest_url
+  changed_when: false
+
+- name: Définir l'URL finale de téléchargement
+  set_fact:
+    node_exporter_url: "{{ node_exporter_latest_url.stdout }}"
+
+- name: Récupérer le checksum attendu depuis GitHub
+  shell: |
+    curl -s https://api.github.com/repos/prometheus/node_exporter/releases/latest \
+      | grep 'sha256' \
+      | grep 'linux-amd64.tar.gz' \
+      | head -n 1 \
+      | cut -d '"' -f 4 \
+      | xargs curl -s \
+      | sha256sum | awk '{print "sha256:" $1}'
+  register: node_exporter_expected_checksum
+  changed_when: false
+
+- name: Vérifier si le fichier Node Exporter existe déjà
+  stat:
+    path: "{{ node_exporter_download_path }}"
+  register: node_exporter_file_stat
+
+- name: Vérifier le checksum si le fichier existe
+  shell: |
+    sha256sum "{{ node_exporter_download_path }}" | awk '{print "sha256:" $1}'
+  register: node_exporter_local_checksum
+  when: node_exporter_file_stat.stat.exists
+  failed_when: false
+  # Do not fail if the checksum command fails, we will handle it later.
+  changed_when: false
+
+- name: Télécharger node_exporter si le fichier est absent ou corrompu
+  shell: |
+    curl -L "{{ node_exporter_url }}" -o "{{ node_exporter_download_path }}"
+  args:
+    executable: /bin/bash
+  when: not node_exporter_file_stat.stat.exists
+        or node_exporter_local_checksum.stdout != node_exporter_expected_checksum
+  register: node_exporter_download
+  changed_when: true
+
+
+- name: Extract node_exporter archive
+  ansible.builtin.unarchive:
+    src: /tmp/node_exporter-latest.tar.gz
+    dest: /tmp/
+    remote_src: yes
+  args:
+    creates: /tmp/node_exporter-latest
+
+- name:
+  ansible.builtin.shell: |
+    mv /tmp/node_exporter-*.linux-amd64 /usr/local/bin
+    chown root:root /usr/local/bin/node_exporter
+  args:
+    creates: /usr/local/bin/node_exporter
+
+
+#- name: Move and set permissions for Prometheus
+  #ansible.builtin.shell: |
+  #  mv /tmp/prometheus-*.linux-amd64 /opt/prometheus
+  #  chown -R prometheus:prometheus /opt/prometheus
+  #  chmod -R 0755 /opt/prometheus
+  #  sed -i '/^#/d' /opt/prometheus/prometheus.yml
+  #args:
+    #creates: /opt/prometheus
+
+#- name: Create Prometheus data directory
+  #ansible.builtin.file:
+    #path: /opt/prometheus/data
+    #state: directory
+    #owner: prometheus
+    #group: prometheus
+
+- name: Deploy Node Exporter systemd service file
+  ansible.builtin.copy:
+    src: files/node_exporter.service
+    dest: /etc/systemd/system/node_exporter.service
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Reload systemd daemon
+  command: systemctl daemon-reload
+  notify:
+    - enable node_exporter
+
+- name: UFW - Allow 9100 connections
+  community.general.ufw:
+    rule: allow
+    port: 9100

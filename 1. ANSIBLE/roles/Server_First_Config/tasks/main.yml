@@ -1,10 +1,12 @@
 ---
+# Install aptitude package manager
 - name: Install aptitude
   apt:
       name: aptitude
       state: latest
       update_cache: true
 
+# Configure passwordless sudo for users in the 'sudo' group
 - name: Setup passwordless sudo
   lineinfile:
     path: /etc/sudoers
@@ -14,6 +16,7 @@
     validate: '/usr/sbin/visudo -cf %s'
   notify: restart ssh
 
+# Create a new user and add to 'sudo' group
 - name: Create a new regular user with sudo privileges
   user:
     name: "{{ created_username }}"
@@ -22,19 +25,22 @@
     append: true
     create_home: true
 
+# Set up SSH authorized key for the new user
 - name: Set authorized key for remote user
   ansible.posix.authorized_key:
     user: "{{ created_username }}"
     state: present
     key: "{{ lookup('file', lookup('env','HOME') + '/.ssh/id_rsa.pub') }}"
 
+# Disable root login via SSH
 - name: Disable password authentication for root
   lineinfile:
     path: /etc/ssh/sshd_config
     state: present
     regexp: '^#?PermitRootLogin'
-    line: 'PermitRootLogin prohibit-password'
+    line: 'PermitRootLogin no'
 
+# Update apt cache and install essential system packages
 - name: Update apt and install required system packages
   apt:
     pkg:
@@ -45,11 +51,18 @@
     state: latest
     update_cache: true
 
+# UFW configuration:
+# Allowed services/ports:
+# - OpenSSH (port 22) for remote access
+# Add additional allowed ports/services below as needed.
+
+# Allow SSH connections through UFW firewall
 - name: UFW - Allow SSH connections
   community.general.ufw:
     rule: allow
     name: OpenSSH
 
+# Enable UFW and set default policy to deny incoming connections
 - name: UFW - Enable and deny by default
   community.general.ufw:
     state: enabled

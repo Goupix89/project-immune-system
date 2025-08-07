@@ -1,15 +1,15 @@
 ---
 # Handler to enable and start SSH service
-- name: enable ssh
+- name: enable node_exporter
   service:
-    name: ssh
+    name: node_exporter
     state: started
     enabled: true
-    immediate: true
+
 
 # Handler to restart SSH service
-- name: restart ssh
+- name: restart node_exporter
   service:
-    name: ssh
+    name: node_exporter
     state: restarted
     

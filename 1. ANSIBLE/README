@@ -1,0 +1,11 @@
+Configuration machine contrôle Ansible
+
+Essayer une première connexion à ssh (à corriger)
+
+Installe sshpass sur ta machine de contrôle (celle où tu exécutes Ansible).
+
+Sous Ubuntu/Debian : sudo apt-get install sshpass
+
+Sous CentOS/RHEL : sudo yum install sshpass
+
+Sous Windows (avec WSL) : Ouvre un terminal WSL et utilise la commande Ubuntu ci-dessus.

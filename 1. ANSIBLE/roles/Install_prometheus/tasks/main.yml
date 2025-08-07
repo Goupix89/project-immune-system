@@ -1,0 +1,112 @@
+- name: Update apt and install required system packages
+  apt:
+    pkg:
+      - wget
+      - nginx
+      - curl
+    state: latest
+    update_cache: true
+
+- name: Create Prometheus user and group
+  ansible.builtin.user: 
+    name: prometheus
+    system: true
+    shell: /bin/false
+    # Prometheus runs as a service and does not require a home directory.
+    create_home: false
+
+- name: Définir le chemin de téléchargement
+  set_fact:
+    prometheus_download_path: "/tmp/prometheus-latest.tar.gz"
+
+- name: Récupérer l'URL de la dernière release Prometheus
+  shell: |
+    curl -s https://api.github.com/repos/prometheus/prometheus/releases/latest \
+      | grep 'browser_download_url.*linux-amd64.tar.gz' \
+      | head -n 1 \
+      | cut -d '"' -f 4
+  register: prometheus_latest_url
+  changed_when: false
+
+- name: Définir l'URL finale de téléchargement
+  set_fact:
+    prometheus_url: "{{ prometheus_latest_url.stdout }}"
+
+- name: Récupérer le checksum attendu depuis GitHub
+  shell: |
+    curl -s https://api.github.com/repos/prometheus/prometheus/releases/latest \
+      | grep 'sha256' \
+      | grep 'linux-amd64.tar.gz' \
+      | head -n 1 \
+      | cut -d '"' -f 4 \
+      | xargs curl -s \
+      | sha256sum | awk '{print "sha256:" $1}'
+  register: prometheus_expected_checksum
+  changed_when: false
+
+- name: Vérifier si le fichier Prometheus existe déjà
+  stat:
+    path: "{{ prometheus_download_path }}"
+  register: prometheus_file_stat
+
+- name: Vérifier le checksum si le fichier existe
+  shell: |
+    sha256sum "{{ prometheus_download_path }}" | awk '{print "sha256:" $1}'
+  register: prometheus_local_checksum
+  when: prometheus_file_stat.stat.exists
+  failed_when: false
+  # Do not fail if the checksum command fails, we will handle it later.
+  changed_when: false
+
+- name: Télécharger Prometheus si le fichier est absent ou corrompu
+  shell: |
+    curl -L "{{ prometheus_url }}" -o "{{ prometheus_download_path }}"
+  args:
+    executable: /bin/bash
+  when: not prometheus_file_stat.stat.exists
+        or prometheus_local_checksum.stdout != prometheus_expected_checksum
+  register: prometheus_download
+  changed_when: true
+
+
+- name: Extract Prometheus archive
+  ansible.builtin.unarchive:
+    src: /tmp/prometheus-latest.tar.gz
+    dest: /tmp/
+    remote_src: yes
+  args:
+    creates: /tmp/prometheus-latest
+
+- name: Move and set permissions for Prometheus
+  ansible.builtin.shell: |
+    mv /tmp/prometheus-*.linux-amd64 /opt/prometheus
+    chown -R prometheus:prometheus /opt/prometheus
+    chmod -R 0755 /opt/prometheus
+    sed -i '/^#/d' /opt/prometheus/prometheus.yml
+  args:
+    creates: /opt/prometheus
+
+- name: Create Prometheus data directory
+  ansible.builtin.file:
+    path: /opt/prometheus/data
+    state: directory
+    owner: prometheus
+    group: prometheus
+
+- name: Deploy Prometheus systemd service file
+  ansible.builtin.copy:
+    src: files/prometheus.service
+    dest: /etc/systemd/system/prometheus.service
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Reload systemd daemon
+  command: systemctl daemon-reload
+  notify:
+    - enable prometheus
+
+- name: UFW - Allow 9090 connections
+  community.general.ufw:
+    rule: allow
+    port: 9090

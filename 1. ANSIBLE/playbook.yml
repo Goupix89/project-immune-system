@@ -6,3 +6,5 @@
     created_username: form
   roles:
     - Server_First_Config
+    - Install_prometheus
+    - Install_Node_Exporter
