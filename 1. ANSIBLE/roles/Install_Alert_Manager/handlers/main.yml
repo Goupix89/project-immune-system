@@ -1,0 +1,15 @@
+---
+# Handler to enable and start SSH service
+- name: enable alert_manager
+  service:
+    name: alert_manager
+    state: started
+    enabled: true
+
+
+# Handler to restart SSH service
+- name: restart alert_manager
+  service:
+    name: alert_manager
+    state: restarted
+    

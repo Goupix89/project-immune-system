@@ -12,7 +12,6 @@
     name: prometheus
     system: true
     shell: /bin/false
-    # Prometheus runs as a service and does not require a home directory.
     create_home: false
 
 - name: Définir le chemin de téléchargement
@@ -55,7 +54,6 @@
   register: prometheus_local_checksum
   when: prometheus_file_stat.stat.exists
   failed_when: false
-  # Do not fail if the checksum command fails, we will handle it later.
   changed_when: false
 
 - name: Télécharger Prometheus si le fichier est absent ou corrompu

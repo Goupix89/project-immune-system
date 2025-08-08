@@ -1,5 +1,4 @@
 ---
-# Handler to enable and start SSH service
 - name: enable prometheus
   service:
     name: prometheus
@@ -7,7 +6,6 @@
     enabled: true
 
 
-# Handler to restart SSH service
 - name: restart prometheus
   service:
     name: prometheus

@@ -1,5 +1,5 @@
 ---
-- hosts: prometheus
+- hosts: webservers
   become: true
   gather_facts: false
   vars:
@@ -7,7 +7,4 @@
     apache_document_root: /var/www/example
   roles:
     - Server_First_Config
-    - Install_prometheus
-    - Install_Node_Exporter
-    - Install_Alert_Managers
     - Install_Apache2

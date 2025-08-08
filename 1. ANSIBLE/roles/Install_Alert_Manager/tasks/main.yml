@@ -1,0 +1,97 @@
+- name: Définir le chemin de téléchargement
+  set_fact:
+    alert_manager_download_path: "/tmp/alert_manager-latest.tar.gz"
+
+- name: Récupérer l'URL de la dernière release alert_manager
+  shell: |
+    curl -s https://api.github.com/repos/prometheus/alert_manager/releases/latest \
+      | grep 'browser_download_url.*linux-amd64.tar.gz' \
+      | head -n 1 \
+      | cut -d '"' -f 4
+  register: alert_manager_latest_url
+  changed_when: false
+
+- name: Définir l'URL finale de téléchargement
+  set_fact:
+    alert_manager_url: "{{ alert_manager_latest_url.stdout }}"
+
+- name: Récupérer le checksum attendu depuis GitHub
+  shell: |
+    curl -s https://api.github.com/repos/prometheus/alert_manager/releases/latest \
+      | grep 'sha256' \
+      | grep 'linux-amd64.tar.gz' \
+      | head -n 1 \
+      | cut -d '"' -f 4 \
+      | xargs curl -s \
+      | sha256sum | awk '{print "sha256:" $1}'
+  register: alert_manager_expected_checksum
+  changed_when: false
+
+- name: Vérifier si le fichier Alert Manager existe déjà
+  stat:
+    path: "{{ alert_manager_download_path }}"
+  register: alert_manager_file_stat
+
+- name: Vérifier le checksum si le fichier existe
+  shell: |
+    sha256sum "{{ alert_manager_download_path }}" | awk '{print "sha256:" $1}'
+  register: alert_manager_local_checksum
+  when: alert_manager_file_stat.stat.exists
+  failed_when: false
+  # Do not fail if the checksum command fails, we will handle it later.
+  changed_when: false
+
+- name: Télécharger alert manager si le fichier est absent ou corrompu
+  shell: |
+    curl -L "{{ alert_manager_url }}" -o "{{ alert_manager_download_path }}"
+  args:
+    executable: /bin/bash
+  when: not alert_manager_file_stat.stat.exists
+        or alert_manager_local_checksum.stdout != alert_manager_expected_checksum
+  register: alert_manager_download
+  changed_when: true
+
+
+- name: Extract alert_manager archive
+  ansible.builtin.unarchive:
+    src: /tmp/alert_manager-latest.tar.gz
+    dest: /tmp/
+    remote_src: yes
+  args:
+    creates: /tmp/alert_manager-latest
+
+- name: Move and set permissions for Alert Manager
+  ansible.builtin.shell: |
+    mv /tmp/alert_manager-*.linux-amd64 /opt/alertmanager
+    chown -R prometheus:prometheus /opt/alertmanager
+    chmod -R 0755 /opt/alertmanager
+    sed -i '/^#/d' /opt/prometheus/prometheus.yml
+  args:
+    creates: /opt/alertmanager
+
+- name: Create Alert Manager data directory
+  ansible.builtin.file:
+    path: /opt/alertmanager/data
+    state: directory
+    owner: prometheus
+    group: prometheus
+  args:
+    creates: /opt/alertmanager/data
+
+- name: Deploy Alert Manager systemd service file
+  ansible.builtin.copy:
+    src: files/alert_manager.service
+    dest: /etc/systemd/system/alert_manager.service
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Reload systemd daemon
+  command: systemctl daemon-reload
+  notify:
+    - enable alert_manager
+
+- name: UFW - Allow 9100 connections
+  community.general.ufw:
+    rule: allow
+    port: 9100
